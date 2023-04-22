@@ -429,7 +429,7 @@ class MainWindow(QMainWindow):
 
         url = self.make_url()
         self.do_request(url)
-        self.statusbar.showMessage(f"Requête lancée: {url}")
+        self.statusbar.showMessage(f"{url}")
 
     def do_request(self, url):
         self.network_manager = QNetworkAccessManager()
@@ -492,7 +492,7 @@ class MainWindow(QMainWindow):
                 self.table.setItem(i, 5, col_6)
                 i += 1
 
-            self.statusbar.showMessage(f"Requête OK. Nombre de résultat(s): {len(self.reply_dict['results'])}")
+            self.statusbar.showMessage(f"Request OK. Result(s): {len(self.reply_dict['results'])}")
             self.save_json_action.setEnabled(True)
             self.save_csv_action.setEnabled(True)
         else:
