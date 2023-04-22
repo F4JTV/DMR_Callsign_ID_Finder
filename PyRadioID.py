@@ -3,20 +3,15 @@
 ######################################################################
 # DMR Callsign/ID Finder using RadioID API: https://radioid.net/api/ #
 ######################################################################
-# TODO: Trad
-# TODO: work about Window
-# TODO: add tooltips
 import sys
 import json
 import webbrowser
 from csv import DictWriter
-from datetime import datetime
 from os import listdir, remove
 from urllib.request import urlopen
 
 
-from PyQt5.QtCore import (QRegExp, Qt, QUrl, QThread, pyqtSignal,
-                          QPointF, QTranslator, QLocale, QLibraryInfo)
+from PyQt5.QtCore import (QRegExp, Qt, QUrl, QThread, pyqtSignal, QPointF)
 from PyQt5.QtGui import (QColor, QIcon, QRegExpValidator, QCloseEvent,
                          QFont, QPalette, QLinearGradient, QFontDatabase,
                          QPixmap, QGradient)
@@ -26,11 +21,11 @@ from PyQt5.QtWidgets import (QMainWindow, QStatusBar, QMenuBar,
                              QHBoxLayout, QComboBox, QLineEdit, QTableWidget,
                              QPushButton, QFileDialog, QMessageBox, QProgressBar,
                              QTableWidgetItem, QDialog, QApplication, QSplashScreen,
-                             QHeaderView)
+                             QHeaderView, QLabel)
 from PyQt5.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
-APP_VERSION = datetime.strftime(datetime.now(), "v0.%y%m%d")
-APP_NAME = "DMR Callsign/ID Finder"
+APP_VERSION = "v1.00"
+APP_NAME = "PyRadioID"
 APP_TITLE = f"{APP_NAME} {APP_VERSION}"
 ICON = "./images/icon.png"
 FONTS_DICT = {"Lato": "./font/Lato-Regular.ttf",
@@ -68,6 +63,11 @@ def format_combo(combobox):
         combobox.setItemData(i, Qt.AlignCenter, Qt.TextAlignmentRole)
 
 
+def open_webbrowser():
+    web = WebBrowser("https://radioid.net/")
+    web.run()
+
+
 class MainWindow(QMainWindow):
     """ Main Window """
 
@@ -91,6 +91,7 @@ class MainWindow(QMainWindow):
         self.dl_progressbar = None
         self.downloader = None
         self.qrz = None
+        self.reply_dict = dict()
 
         # ####### StatusBar
         self.statusbar = QStatusBar(self)
@@ -156,13 +157,8 @@ class MainWindow(QMainWindow):
         self.add_filter_action.triggered.connect(self.add_fiter)
         self.remove_filter_action = QAction("Remove filter")
         self.remove_filter_action.triggered.connect(self.remove_filter)
-        self.tool_tips_action = QAction("ToolTips")
-        self.tool_tips_action.setCheckable(True)
         self.edit_menu.addAction(self.add_filter_action)
         self.edit_menu.addAction(self.remove_filter_action)
-        self.edit_menu.addSeparator()
-        self.edit_menu.addAction(self.tool_tips_action)
-        self.tool_tips_action.triggered.connect(self.toggle_tooltips)
 
         self.remove_filter_action.setDisabled(True)
 
@@ -274,6 +270,11 @@ class MainWindow(QMainWindow):
         self.shadow_table.setBlurRadius(SHADOW_BLUR)
         self.table.setGraphicsEffect(self.shadow_table)
 
+        # ###### Right Menu
+        self.right_menu = QMenu()
+        self.right_click_action = QAction("Search callsign on QRZ.com")
+        self.right_menu.addAction(self.right_click_action)
+
         # Search buttons
         self.search_buttons_layout = QHBoxLayout()
         self.search_api_btn = QPushButton("Search")
@@ -383,12 +384,6 @@ class MainWindow(QMainWindow):
         self.statusbar.removeWidget(self.dl_progressbar)
         self.statusbar.showMessage(f"{file_name} downloaded with success")
 
-    def toggle_tooltips(self):
-        if self.tooltips:
-            self.tooltips = False
-        else:
-            self.tooltips = True
-
     def display_parameter_win(self):
         if self.parameter_window is None:
             self.parameter_window = ParameterWindow(self)
@@ -401,6 +396,8 @@ class MainWindow(QMainWindow):
         if self.about_window is None:
             self.about_window = AboutWindow(self)
             self.about_window.show()
+            self.about_window.resize(self.about_window.minimumSizeHint())
+            self.about_window.setFixedSize(self.about_window.size())
         else:
             pass
 
@@ -429,6 +426,7 @@ class MainWindow(QMainWindow):
         if not self.input_2_grp.isHidden():
             if not self.entry_2.hasAcceptableInput():
                 return
+
         url = self.make_url()
         self.do_request(url)
         self.statusbar.showMessage(f"Requête lancée: {url}")
@@ -444,19 +442,20 @@ class MainWindow(QMainWindow):
 
         if error == QNetworkReply.NoError:
             rep = reply.readAll()
-            reply_dict = json.loads(rep.data().decode("ascii"))
-            self.table.setRowCount(len(reply_dict["results"]))
+            self.reply_dict = json.loads(rep.data().decode("ascii"))
+
+            self.table.setRowCount(len(self.reply_dict["results"]))
             i = 0
-            for result in range(0, len(reply_dict["results"])):
-                callsign = reply_dict["results"][i]["callsign"]
-                dmr_id = reply_dict["results"][i]['id']
-                city = reply_dict["results"][i]["city"].capitalize()
-                state = reply_dict["results"][i]["state"]
-                country = reply_dict["results"][i]["country"].capitalize()
+            for result in range(0, len(self.reply_dict["results"])):
+                callsign = self.reply_dict["results"][i]["callsign"]
+                dmr_id = self.reply_dict["results"][i]['id']
+                city = self.reply_dict["results"][i]["city"].capitalize()
+                state = self.reply_dict["results"][i]["state"]
+                country = self.reply_dict["results"][i]["country"].capitalize()
                 if self.dmr_rpt_action.isChecked():
-                    surname = reply_dict["results"][i]["frequency"]
+                    surname = self.reply_dict["results"][i]["frequency"]
                 else:
-                    surname = reply_dict["results"][i]["surname"]
+                    surname = self.reply_dict["results"][i]["surname"]
 
                 col_1 = QTableWidgetItem(callsign)
                 col_2 = QTableWidgetItem(str(dmr_id))
@@ -478,6 +477,13 @@ class MainWindow(QMainWindow):
                 col_6.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
                 col_6.setTextAlignment(Qt.AlignCenter)
 
+                col_1.setFlags(Qt.NoItemFlags | Qt.ItemIsEnabled)
+                col_2.setFlags(Qt.NoItemFlags | Qt.ItemIsEnabled)
+                col_3.setFlags(Qt.NoItemFlags | Qt.ItemIsEnabled)
+                col_4.setFlags(Qt.NoItemFlags | Qt.ItemIsEnabled)
+                col_5.setFlags(Qt.NoItemFlags | Qt.ItemIsEnabled)
+                col_6.setFlags(Qt.NoItemFlags | Qt.ItemIsEnabled)
+
                 self.table.setItem(i, 0, col_1)
                 self.table.setItem(i, 1, col_2)
                 self.table.setItem(i, 2, col_3)
@@ -486,10 +492,9 @@ class MainWindow(QMainWindow):
                 self.table.setItem(i, 5, col_6)
                 i += 1
 
-            self.statusbar.showMessage(f"Requête OK. Nombre de résultat(s): {len(reply_dict['results'])}")
+            self.statusbar.showMessage(f"Requête OK. Nombre de résultat(s): {len(self.reply_dict['results'])}")
             self.save_json_action.setEnabled(True)
             self.save_csv_action.setEnabled(True)
-
         else:
             self.statusbar.showMessage(reply.errorString())
             if self.dmr_user_action.isChecked():
@@ -725,14 +730,13 @@ class Downloader(QThread):
         self.succeeded.emit()
 
 
-class QRZ(QThread):
-
-    def __init__(self, callsign):
+class WebBrowser(QThread):
+    def __init__(self, url):
         super().__init__()
-        self._callsign = callsign
+        self._url = url
 
     def run(self):
-        url = QRZ_BASE_URL + self._callsign
+        url = self._url
         webbrowser.open(url)
 
 
@@ -744,21 +748,62 @@ class AboutWindow(QDialog):
 
         # ####### Window config
         self.master = master
-        self.setFixedSize(400, 500)
         self.setModal(True)
         self.setWindowFlags(Qt.WindowCloseButtonHint)
         self.setWindowTitle("About")
         self.setWindowIcon(QIcon(ICON))
-        x = self.master.geometry().x() + self.master.width() // 2 - self.width() // 2
-        y = self.master.geometry().y() + self.master.height() // 2 - self.height() // 2
-        self.setGeometry(x, y, 400, 500)
 
         self.master.about_action.setDisabled(True)
+
+        # ###### Main Layout
+        self.main_layout = QVBoxLayout()
+        self.setLayout(self.main_layout)
+
+        self.main_grp = QGroupBox()
+        self.main_layout.addWidget(self.main_grp)
+        self.grp_layout = QVBoxLayout()
+        self.main_grp.setLayout(self.grp_layout)
+
+        self.label = QLabelClickable("This script is made with Python3 and the Framework PyQt5.\n"
+                                     "It use the RadioID.net API to find records about \n"
+                                     "DMR ID/Callsign\n\n"
+                                     "https://radioid.net/\n\n")
+        # noinspection PyUnresolvedReferences
+        self.label.clicked.connect(open_webbrowser)
+        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.pixmap_label = QLabel()
+        self.pixmap = QPixmap("./images/python3_logo.png")
+        self.new_pixmap = self.pixmap.scaledToWidth(300, Qt.SmoothTransformation)
+        self.pixmap_label.setPixmap(self.new_pixmap)
+
+        self.grp_layout.addWidget(self.label, 1, Qt.AlignmentFlag.AlignCenter)
+        self.grp_layout.addWidget(self.pixmap_label, 1, Qt.AlignmentFlag.AlignCenter)
+
+        self.main_grp_shadow = QGraphicsDropShadowEffect()
+        self.main_grp_shadow.setBlurRadius(SHADOW_BLUR)
+        self.main_grp.setGraphicsEffect(self.main_grp_shadow)
+        if self.master.current_theme == "Light":
+            self.main_grp_shadow.setColor(LIGHT_SHADOW)
+        elif self.master.current_theme == "Gray":
+            self.main_grp_shadow.setColor(GRAY_SHADOW)
+        elif self.master.current_theme == "Dark":
+            self.main_grp_shadow.setColor(DARK_SHADOW)
 
     def closeEvent(self, event):
         """Close event """
         self.master.about_window = None
         self.master.about_action.setEnabled(True)
+
+
+class QLabelClickable(QLabel):
+    """Clickable QLabel"""
+    clicked = pyqtSignal()
+
+    def mousePressEvent(self, event):
+        """Emit a clicked signal if ther is Mouse Press Event"""
+
+        # noinspection PyUnresolvedReferences
+        self.clicked.emit()
 
 
 class ParameterWindow(QDialog):
@@ -783,12 +828,12 @@ class ParameterWindow(QDialog):
 
         # ####### Fonts
         self.font_grp = QGroupBox("Fonts")
-        self.main_layout.addWidget(self.font_grp, 1, Qt.AlignmentFlag.AlignCenter)
+        self.main_layout.addWidget(self.font_grp, 1)
         self.font_layout = QHBoxLayout()
         self.font_combo = QComboBox()
         self.font_size_combo = QComboBox()
-        self.font_layout.addWidget(self.font_combo, 4, Qt.AlignmentFlag.AlignCenter)
-        self.font_layout.addWidget(self.font_size_combo, 1, Qt.AlignmentFlag.AlignCenter)
+        self.font_layout.addWidget(self.font_combo, 4)
+        self.font_layout.addWidget(self.font_size_combo, 1)
         self.font_grp.setLayout(self.font_layout)
 
         self.font_combo.setEditable(True)
@@ -814,18 +859,12 @@ class ParameterWindow(QDialog):
         # ####### Theme
         self.theme_lang_layout = QHBoxLayout()
         self.theme_grp = QGroupBox("Theme")
-        self.lang_grp = QGroupBox("Language")
         self.theme_lang_layout.addWidget(self.theme_grp)
-        self.theme_lang_layout.addWidget(self.lang_grp)
         self.main_layout.addLayout(self.theme_lang_layout, 1)
         self.theme_layout = QHBoxLayout()
-        self.lang_layout = QHBoxLayout()
         self.theme_combo = QComboBox()
-        self.lang_combo = QComboBox()
-        self.theme_layout.addWidget(self.theme_combo, 1, Qt.AlignmentFlag.AlignCenter)
-        self.lang_layout.addWidget(self.lang_combo, 1, Qt.AlignmentFlag.AlignCenter)
+        self.theme_layout.addWidget(self.theme_combo, 1)
         self.theme_grp.setLayout(self.theme_layout)
-        self.lang_grp.setLayout(self.lang_layout)
 
         self.theme_combo.setEditable(True)
         self.theme_combo.lineEdit().setReadOnly(True)
@@ -839,23 +878,10 @@ class ParameterWindow(QDialog):
         self.theme_shadow.setBlurRadius(SHADOW_BLUR)
         self.theme_grp.setGraphicsEffect(self.theme_shadow)
 
-        self.lang_combo.setEditable(True)
-        self.lang_combo.lineEdit().setReadOnly(True)
-        self.lang_combo.lineEdit().setAlignment(Qt.AlignCenter)
-        self.lang_combo.addItems(["Français", "English"])
-        self.lang_combo.setMinimumWidth(120)
-        self.lang_combo.activated.connect(self.set_lang)
-        format_combo(self.lang_combo)
-
-        self.lang_shadow = QGraphicsDropShadowEffect()
-        self.lang_shadow.setBlurRadius(SHADOW_BLUR)
-        self.lang_grp.setGraphicsEffect(self.lang_shadow)
-
         # ####### Initialisation
         self.font_combo.setCurrentText(self.master.app.font().family())
         self.font_size_combo.setCurrentText(str(self.master.app.font().pointSize()))
         self.theme_combo.setCurrentText(self.master.current_theme)
-        self.lang_combo.setCurrentText(self.master.lang)
 
         self.set_theme()
 
@@ -906,7 +932,6 @@ class ParameterWindow(QDialog):
 
             self.font_shadow.setColor(GRAY_SHADOW)
             self.theme_shadow.setColor(GRAY_SHADOW)
-            self.lang_shadow.setColor(GRAY_SHADOW)
             self.master.shadow_menu.setColor(GRAY_SHADOW)
             self.master.shadow_1_grp.setColor(GRAY_SHADOW)
             self.master.shadow_2_grp.setColor(GRAY_SHADOW)
@@ -950,7 +975,6 @@ class ParameterWindow(QDialog):
 
             self.font_shadow.setColor(DARK_SHADOW)
             self.theme_shadow.setColor(DARK_SHADOW)
-            self.lang_shadow.setColor(DARK_SHADOW)
             self.master.shadow_menu.setColor(DARK_SHADOW)
             self.master.shadow_1_grp.setColor(DARK_SHADOW)
             self.master.shadow_2_grp.setColor(DARK_SHADOW)
@@ -962,7 +986,6 @@ class ParameterWindow(QDialog):
         elif theme == "Light":
             self.font_shadow.setColor(LIGHT_SHADOW)
             self.theme_shadow.setColor(LIGHT_SHADOW)
-            self.lang_shadow.setColor(LIGHT_SHADOW)
             self.master.shadow_menu.setColor(LIGHT_SHADOW)
             self.master.shadow_1_grp.setColor(LIGHT_SHADOW)
             self.master.shadow_2_grp.setColor(LIGHT_SHADOW)
@@ -973,9 +996,6 @@ class ParameterWindow(QDialog):
 
         self.master.app.setPalette(palette)
 
-    def set_lang(self):
-        self.master.lang = self.lang_combo.currentText()
-
     def closeEvent(self, event):
         """Close event """
         self.master.parameter_window = None
@@ -984,13 +1004,6 @@ class ParameterWindow(QDialog):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-
-    # Contextual menu translation
-    translator = QTranslator()
-    # noinspection PyArgumentList
-    translator.load('qtbase_' + QLocale.system().name() + ".qm",
-                    QLibraryInfo.location(QLibraryInfo.LibraryLocation.TranslationsPath))
-    app.installTranslator(translator)
 
     # Font
     for font in FONTS_DICT.values():
