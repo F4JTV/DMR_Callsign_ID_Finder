@@ -255,7 +255,7 @@ class MainWindow(QMainWindow):
         # ####### Table
         self.table = QTableWidget()
         self.table.setColumnCount(6)
-        self.table.setSortingEnabled(True)
+        self.table.setSortingEnabled(False)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
@@ -443,7 +443,13 @@ class MainWindow(QMainWindow):
         if error == QNetworkReply.NoError:
             rep = reply.readAll()
             self.reply_dict = json.loads(rep.data().decode("ascii"))
-
+            self.table.clear()
+            if self.dmr_rpt_action.isChecked():
+                self.table.setHorizontalHeaderLabels(["Callsign", "ID", "City",
+                                                      "State", "Country", "Frequency"])
+            else:
+                self.table.setHorizontalHeaderLabels(["Callsign", "ID", "City",
+                                                      "State", "Country", "Surname"])
             self.table.setRowCount(len(self.reply_dict["results"]))
             i = 0
             for result in range(0, len(self.reply_dict["results"])):
